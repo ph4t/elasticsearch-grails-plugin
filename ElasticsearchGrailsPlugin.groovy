@@ -36,13 +36,13 @@ class ElasticsearchGrailsPlugin {
     static LOG = Logger.getLogger("org.grails.plugins.elasticsearch.ElasticsearchGrailsPlugin")
 
     // the plugin version
-    def version = "0.19.8-SNAPSHOT"
+    def version = "0.19.11-SNAPSHOT9"
     // the version or versions of Grails the plugin is designed for
-    def grailsVersion = "1.3.0 > *"
+    def grailsVersion = "2.1.0 > *"
     // the other plugins this plugin depends on
     def dependsOn = [
-            domainClass: "1.0 > *",
-            hibernate: "1.0 > *"
+            domainClass: "2.0 > *",
+            hibernate: "2.0 > *"
     ]
     def loadAfter = ['services']
 
