@@ -145,10 +145,15 @@ public class DomainClassUnmarshaller {
     private Object unmarshallProperty(GrailsDomainClass domainClass, String propertyName, Object propertyValue, DefaultUnmarshallingContext unmarshallingContext) {
         // TODO : adapt behavior if the mapping option "component" or "reference" are set
         // below is considering the "component" behavior
+    	if (LOG.isDebugEnabled()){
+    		LOG.debug("Unmarshalling property " + propertyName + " with value " + propertyValue);
+    	}
         SearchableClassPropertyMapping scpm = elasticSearchContextHolder.getMappingContext(domainClass).getPropertyMapping(propertyName);
         Object parseResult = null;
         if (null == scpm) {
             // TODO: unhandled property exists in index
+        	LOG.error("Index contains a unhandled property which will be ignored. Property name" + propertyName + " with value " + propertyValue);
+        	return null;
         }
         if (null != scpm && propertyValue instanceof Map) {
 
@@ -257,7 +262,12 @@ public class DomainClassUnmarshaller {
 
 
     private Object unmarshallDomain(GrailsDomainClass domainClass, Object providedId, Map<String, Object> data, DefaultUnmarshallingContext unmarshallingContext) {
-        GrailsDomainClassProperty identifier = domainClass.getIdentifier();
+        if (data == null){
+        	LOG.error("Unable to unmarshal the domain object due to empty data parameters. DomainClass: " + domainClass.getFullName() + " with id " + providedId);
+        	throw new IllegalArgumentException("Failed to unmarshal a domain object due to empty data");
+        }
+    	
+    	GrailsDomainClassProperty identifier = domainClass.getIdentifier();
         Object id = typeConverter.convertIfNecessary(providedId, identifier.getType());
         GroovyObject instance = (GroovyObject) domainClass.newInstance();
         instance.setProperty(identifier.getName(), id);
