@@ -32,6 +32,7 @@ grails.project.dependency.resolution = {
         // specify dependencies here under either 'build', 'compile', 'runtime', 'test' or 'provided' scopes eg.
         runtime "org.elasticsearch:elasticsearch:0.19.11"
         runtime "org.elasticsearch:elasticsearch-lang-groovy:1.1.0"
+		//runtime 'org.xerial.snappy:snappy-java:1.0.4.1' --> throws java.lang.UnsatisfiedLinkError: org.xerial.snappy.SnappyNative.maxCompressedLength(I)I
     }
     plugins {
 		runtime ":hibernate:$grailsVersion"

@@ -6,3 +6,10 @@ target
 prodDb.properties
 prodDb.script
 .link_to_grails_plugins
+/target-eclipse
+/.settings
+/.link_to_grails_plugins
+/grails-elasticsearch-0.19.11-SNAPSHOT.zip
+/.classpath
+/.project
+/plugin.xml
