@@ -16,26 +16,27 @@
 
 package org.grails.plugins.elasticsearch.conversion
 
-import org.codehaus.groovy.grails.commons.GrailsDomainClassProperty
-import org.elasticsearch.common.xcontent.XContentBuilder
 import static org.elasticsearch.common.xcontent.XContentFactory.*
-import org.codehaus.groovy.grails.commons.GrailsDomainClass
-import org.codehaus.groovy.grails.commons.ApplicationHolder
-import org.grails.plugins.elasticsearch.conversion.marshall.DeepDomainClassMarshaller
-import org.grails.plugins.elasticsearch.conversion.marshall.DefaultMarshallingContext
-import org.grails.plugins.elasticsearch.conversion.marshall.DefaultMarshaller
-import org.grails.plugins.elasticsearch.conversion.marshall.MapMarshaller
-import org.grails.plugins.elasticsearch.conversion.marshall.CollectionMarshaller
-import org.codehaus.groovy.grails.commons.DomainClassArtefactHandler
+import groovy.util.logging.Commons
+
 import java.beans.PropertyEditor
-import org.grails.plugins.elasticsearch.conversion.marshall.PropertyEditorMarshaller
-import org.grails.plugins.elasticsearch.conversion.marshall.Marshaller
-import org.grails.plugins.elasticsearch.conversion.marshall.SearchableReferenceMarshaller
+
+import org.codehaus.groovy.grails.commons.DomainClassArtefactHandler
+import org.codehaus.groovy.grails.commons.GrailsDomainClass
 import org.codehaus.groovy.grails.orm.hibernate.cfg.GrailsHibernateUtil
+import org.elasticsearch.common.xcontent.XContentBuilder
+import org.grails.plugins.elasticsearch.conversion.marshall.CollectionMarshaller
+import org.grails.plugins.elasticsearch.conversion.marshall.DeepDomainClassMarshaller
+import org.grails.plugins.elasticsearch.conversion.marshall.DefaultMarshaller
+import org.grails.plugins.elasticsearch.conversion.marshall.DefaultMarshallingContext
+import org.grails.plugins.elasticsearch.conversion.marshall.MapMarshaller
+import org.grails.plugins.elasticsearch.conversion.marshall.PropertyEditorMarshaller
+import org.grails.plugins.elasticsearch.conversion.marshall.SearchableReferenceMarshaller
 
 /**
  * Marshall objects as JSON.
  */
+@Commons
 class JSONDomainFactory {
 
     def elasticSearchContextHolder
@@ -116,6 +117,8 @@ class JSONDomainFactory {
                 }
             }
         }
+		
+		//log.debug "Object $object will be marshalled by $marshaller"
 
         marshaller.marshallingContext = marshallingContext
         marshaller.elasticSearchContextHolder = elasticSearchContextHolder
