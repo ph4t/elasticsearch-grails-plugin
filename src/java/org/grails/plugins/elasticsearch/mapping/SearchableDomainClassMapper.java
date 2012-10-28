@@ -19,12 +19,16 @@ package org.grails.plugins.elasticsearch.mapping;
 import groovy.lang.Closure;
 import groovy.lang.GroovyObjectSupport;
 import groovy.util.ConfigObject;
+
+import org.apache.log4j.Logger;
 import org.codehaus.groovy.grails.commons.*;
 
 import java.lang.reflect.Modifier;
 import java.util.*;
 
 class SearchableDomainClassMapper extends GroovyObjectSupport {
+	private static final Logger LOG = Logger.getLogger(SearchableDomainClassMapper.class);
+	
     /**
      * Options applied to searchable class itself
      */
@@ -90,6 +94,9 @@ class SearchableDomainClassMapper extends GroovyObjectSupport {
         if (!grailsDomainClass.hasProperty(SEARCHABLE_PROPERTY_NAME)) {
             return null;
         }
+        
+        LOG.debug("Building the mapping of class" + grailsDomainClass.getFullName());
+        
         // Process inheritance.
         List<GrailsDomainClass> superMappings = new ArrayList<GrailsDomainClass>();
         Class<?> currentClass = grailsDomainClass.getClazz();

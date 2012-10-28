@@ -15,6 +15,7 @@
  */
 package org.grails.plugins.elasticsearch.mapping;
 
+import org.apache.log4j.Logger;
 import org.codehaus.groovy.grails.commons.GrailsClassUtils;
 import org.grails.plugins.elasticsearch.ElasticSearchContextHolder;
 import org.springframework.util.ClassUtils;
@@ -25,6 +26,8 @@ import java.util.*;
  * Build ElasticSearch class mapping based on attributes provided by closure.
  */
 public class ElasticSearchMappingFactory {
+	
+	private static final Logger LOG = Logger.getLogger(ElasticSearchMappingFactory.class);
 
     private static final Set<String> SUPPORTED_FORMAT = new HashSet<String>(Arrays.asList(
             "string", "integer", "long", "float", "double", "boolean", "null", "date"));
@@ -50,10 +53,18 @@ public class ElasticSearchMappingFactory {
         for(SearchableClassPropertyMapping scpm : scm.getPropertiesMapping()) {
             // Does it have custom mapping?
             String propType = scpm.getGrailsProperty().getTypePropertyName();
+            String overrideType = scpm.getOverrideType();
+            if (overrideType!=null){
+        		LOG.debug("The type for property " + scpm.getGrailsProperty().getName() + " will be overrriden by " + overrideType);
+        		if (!SUPPORTED_FORMAT.contains(overrideType)){
+        			throw new IllegalArgumentException("overrideType is not a supported. Property: " + scpm.getGrailsProperty().getName());
+        		}
+        		propType = overrideType;
+        	}
             Map<String, Object> propOptions = new LinkedHashMap<String, Object>();
             // Add the custom mapping (searchable static property in domain model)
             propOptions.putAll(scpm.getAttributes());
-            if (!(SUPPORTED_FORMAT.contains(scpm.getGrailsProperty().getTypePropertyName()))) {
+            if (!(SUPPORTED_FORMAT.contains(propType))) {
                 // Handle embedded persistent collections, ie List<String> listOfThings
                 if (scpm.getGrailsProperty().isBasicCollectionType()) {
                     String basicType = ClassUtils.getShortName(scpm.getGrailsProperty().getReferencedPropertyType()).toLowerCase(Locale.ENGLISH);

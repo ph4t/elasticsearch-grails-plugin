@@ -26,7 +26,7 @@ import java.util.*;
 public class SearchableClassPropertyMapping {
 
     public static final Set<String> SEARCHABLE_MAPPING_OPTIONS = new HashSet<String>(Arrays.asList("boost", "index", "analyzer"));
-    public static final Set<String> SEARCHABLE_SPECIAL_MAPPING_OPTIONS = new HashSet<String>(Arrays.asList("component","converter","reference","excludeFromAll","maxDepth"));
+    public static final Set<String> SEARCHABLE_SPECIAL_MAPPING_OPTIONS = new HashSet<String>(Arrays.asList("component","converter","reference","excludeFromAll","maxDepth", "overrideType"));
 
     /** Grails attributes of this property */
     GrailsDomainClassProperty grailsProperty;
@@ -69,6 +69,15 @@ public class SearchableClassPropertyMapping {
 
     public Object getReference() {
         return specialAttributes.get("reference");
+    }
+    
+    public String getOverrideType() {
+    	Object overrideType = specialAttributes.get("overrideType");
+    	if (overrideType != null && !( overrideType instanceof String)){
+    		throw new IllegalArgumentException("The overrideType should be a string and not " + specialAttributes.get("overrideType"));
+    	}
+    	
+        return (String) specialAttributes.get("overrideType");
     }
 
     /**
