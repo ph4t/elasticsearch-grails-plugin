@@ -163,7 +163,7 @@ public class SearchableClassPropertyMapping {
                 '}';
     }
 
-    private Class<?> getPropertyType() {
+    public Class<?> getPropertyType() {
         return grailsProperty.getType();
     }
 
