@@ -4,10 +4,6 @@ grails.project.test.reports.dir = "target/test-reports"
 grails.project.docs.output.dir = 'docs' // for the gh-pages branch
 
 //grails.tomcat.jvmArgs = ["-Xmx1024m","-Xms512m", "-agentpath:C:\\Program Files (x86)\\YourKit Java Profiler 9.0.9\\bin\\win64\\yjpagent.dll=sampling,onexit=snapshot"]
-grails.project.repos.myRepo.url = "http://23.21.171.7/nexus/content/repositories/plang/"
-grails.project.repos.myRepo.username = "deployment"
-grails.project.repos.myRepo.password = "deploymentG"
-grails.project.repos.default = "myRepo"
 grails.release.scm.enabled = false
 
 //grails.project.war.file = "target/${appName}-${appVersion}.war"
