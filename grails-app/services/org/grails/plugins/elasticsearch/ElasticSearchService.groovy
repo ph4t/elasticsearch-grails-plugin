@@ -450,7 +450,11 @@ public class ElasticSearchService implements GrailsApplicationAware {
             if (params.score) {
                 def scoreResults = [:]
                 for (SearchHit hit: searchHits) {
-                    scoreResults[(hit.id)] = hit.score
+					if (hit.id.isLong()){
+						scoreResults[hit.id.toLong()] = hit.score
+					}else{
+						log.warn "Received a score with an ID that is not Long. This score will be ignored. The score id is ${hit.id}"
+					}
                 }
                 result.scores = scoreResults
             }
