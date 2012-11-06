@@ -59,7 +59,7 @@ public class SearchableClassMappingConfigurator {
         Map<String, Object> settings = new HashMap<String, Object>();
 //        settings.put("number_of_shards", 5);        // must have 5 shards to be Green.
 //        settings.put("number_of_replicas", 2);
-        settings.put("number_of_replicas", 0);
+//        settings.put("number_of_replicas", 0);
         // Look for default index settings.
         Map esConfig = (Map) ConfigurationHolder.getConfig().getProperty("elasticSearch");
         if (esConfig != null) {
