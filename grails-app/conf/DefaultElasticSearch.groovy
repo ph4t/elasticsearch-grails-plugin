@@ -50,6 +50,11 @@ elasticSearch {
    *  at once. If this setting is not specified, 500 will be use by default.
    */
   maxBulkRequest = 500
+  /**
+   * Check whether the mapping should be updated on the startup or not
+   * Possible values are "none", "validate" and "install"
+   */
+  mappingActionOnStartup = "validate"
 }
 
 environments {
