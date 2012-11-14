@@ -15,15 +15,29 @@
  */
 package org.grails.plugins.elasticsearch.index;
 
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.log4j.Logger;
 import org.codehaus.groovy.grails.orm.hibernate.cfg.GrailsHibernateUtil;
 import org.codehaus.groovy.grails.orm.hibernate.support.HibernatePersistenceContextInterceptor;
+import org.codehaus.groovy.grails.support.PersistenceContextInterceptor;
 import org.codehaus.groovy.runtime.InvokerHelper;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.bulk.BulkItemResponse;
+import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.grails.plugins.elasticsearch.ElasticSearchContextHolder;
 import org.grails.plugins.elasticsearch.conversion.JSONDomainFactory;
@@ -32,15 +46,8 @@ import org.grails.plugins.elasticsearch.mapping.SearchableClassMapping;
 import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.orm.hibernate3.SessionFactoryUtils;
 import org.springframework.util.Assert;
-
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Holds objects to be indexed.
@@ -50,14 +57,13 @@ import java.util.concurrent.TimeUnit;
  * NOTE: if cluster state is RED, everything will probably fail and keep retrying forever.
  * NOTE: This is shared class, so need to be thread-safe.
  */
-public class IndexRequestQueue implements InitializingBean {
+public class IndexRequestQueue {
 
     private static final Logger LOG = Logger.getLogger(IndexRequestQueue.class);
 
     private JSONDomainFactory jsonDomainFactory;
     private ElasticSearchContextHolder elasticSearchContextHolder;
     private Client elasticSearchClient;
-    private HibernatePersistenceContextInterceptor persistenceInterceptor;
     private SessionFactory sessionFactory;
 
     /**
@@ -94,20 +100,12 @@ public class IndexRequestQueue implements InitializingBean {
         this.sessionFactory = sessionFactory;
     }
 
-    /**
-     */
-    public void afterPropertiesSet() throws Exception {
-        Assert.notNull(sessionFactory);
-        persistenceInterceptor = new HibernatePersistenceContextInterceptor();
-        persistenceInterceptor.setSessionFactory(sessionFactory);
-        persistenceInterceptor.setReadOnly();
-    }
-
     public void addIndexRequest(Object instance) {
         addIndexRequest(instance, null);
     }
 
     public void addIndexRequest(Object instance, Serializable id) {
+    	LOG.debug ("Adding the instance to the queue");
         synchronized (this) {
             IndexEntityKey key = id == null ? new IndexEntityKey(instance) :
                     new IndexEntityKey(id.toString(), GrailsHibernateUtil.unwrapIfProxy(instance).getClass());
@@ -129,13 +127,20 @@ public class IndexRequestQueue implements InitializingBean {
         }
     }
 
+    public OperationBatch executeRequests() {
+        return executeRequests(null);
+    }
+
     /**
      * Execute pending requests and clear both index & delete pending queues.
      *
      * @return Returns an OperationBatch instance which is a listener to the last executed bulk operation. Returns NULL
      *         if there were no operations done on the method call.
      */
-    public OperationBatch executeRequests() {
+    public OperationBatch executeRequests(Session session) {
+    	LOG.debug("Executing the requests for session " + session);
+        boolean isNewSession = null == session;
+        PersistenceContextInterceptor persistenceInterceptor = null;
         Map<IndexEntityKey, Object> toIndex = new LinkedHashMap<IndexEntityKey, Object>();
         Set<IndexEntityKey> toDelete = new HashSet<IndexEntityKey>();
 
@@ -148,6 +153,20 @@ public class IndexRequestQueue implements InitializingBean {
             indexRequests.clear();
             deleteRequests.clear();
         }
+        
+        if (LOG.isDebugEnabled()){
+        	StringBuilder sb = new StringBuilder();
+        	sb.append("The following objects will be indexed: ");
+        	for (IndexEntityKey key : toIndex.keySet()){
+        		sb.append(" Id " + key.getId());
+        		sb.append(", class " + key.getClazz().getCanonicalName());
+        	}
+        	sb.append("The following objects will be deleted: ");
+        	for (IndexEntityKey key : toDelete){
+        		sb.append(" Id " + key.getId());
+        		sb.append(", class " + key.getClazz().getCanonicalName());
+        	}
+        }
 
         // If there are domain instances that are both in the index requests & delete requests list,
         // they are directly deleted.
@@ -155,6 +174,7 @@ public class IndexRequestQueue implements InitializingBean {
 
         // If there is nothing in the queues, just stop here
         if (toIndex.isEmpty() && toDelete.isEmpty()) {
+        	LOG.debug("No objects to index or delete");
             return null;
         }
 
@@ -164,9 +184,12 @@ public class IndexRequestQueue implements InitializingBean {
         // Execute index requests
         for (Map.Entry<IndexEntityKey, Object> entry : toIndex.entrySet()) {
             SearchableClassMapping scm = elasticSearchContextHolder.getMappingContextByType(entry.getKey().getClazz());
-            persistenceInterceptor.init();
+            if (isNewSession) {
+            	LOG.debug("We are creating a new session");
+                persistenceInterceptor = createInterceptor();
+                session = SessionFactoryUtils.getSession(sessionFactory, true);
+            }
             try {
-                Session session = SessionFactoryUtils.getSession(sessionFactory, true);
                 Object entity = entry.getValue();
 
                 // If this not a transient instance, reattach it to the session
@@ -189,10 +212,14 @@ public class IndexRequestQueue implements InitializingBean {
                         LOG.debug("Indexing " + entry.getKey().getClazz() + "(index:" + scm.getIndexName() + ",type:" + scm.getElasticTypeName() +
                                 ") of id " + entry.getKey().getId() + " and source " + json.string());
                     } catch (IOException e) {
+                    	LOG.error("Failed to log. This is not critical but still, but you should wonder why it failed.. ", e);
                     }
                 }
             } finally {
-                persistenceInterceptor.destroy();
+                if (null != persistenceInterceptor) {
+                	LOG.debug("Destrying the interceptor " + persistenceInterceptor);
+                    persistenceInterceptor.destroy();
+                }
             }
         }
 
@@ -249,6 +276,15 @@ public class IndexRequestQueue implements InitializingBean {
         LOG.debug("OperationBatchList cleaned");
     }
 
+    private PersistenceContextInterceptor createInterceptor() {
+        Assert.notNull(sessionFactory);
+        HibernatePersistenceContextInterceptor persistenceInterceptor = new HibernatePersistenceContextInterceptor();
+        persistenceInterceptor.setSessionFactory(sessionFactory);
+        persistenceInterceptor.setReadOnly();
+        persistenceInterceptor.init();
+        return persistenceInterceptor;
+    }
+
     class OperationBatch implements ActionListener<BulkResponse> {
 
         private int attempts;
@@ -257,6 +293,7 @@ public class IndexRequestQueue implements InitializingBean {
         private CountDownLatch synchronizedCompletion = new CountDownLatch(1);
 
         OperationBatch(int attempts, Map<IndexEntityKey, Object> toIndex, Set<IndexEntityKey> toDelete) {
+        	LOG.debug ("Creating new OperationBatch " + this);
             this.attempts = attempts;
             this.toIndex = toIndex;
             this.toDelete = toDelete;
@@ -278,13 +315,13 @@ public class IndexRequestQueue implements InitializingBean {
          */
         public void waitComplete(Integer msTimeout) {
             msTimeout = msTimeout == null ? 5000 : msTimeout;
-            
+
             try {
-                if(!synchronizedCompletion.await(msTimeout, TimeUnit.MILLISECONDS)) {
-                    LOG.warn("OperationBatchList.waitComplete() timed out after " + msTimeout.toString() + "ms");
+                if (!synchronizedCompletion.await(msTimeout, TimeUnit.MILLISECONDS)) {
+                    LOG.warn(this + " OperationBatchList.waitComplete() timed out after " + msTimeout.toString() + "ms");
                 }
             } catch (InterruptedException ie) {
-                LOG.warn("OperationBatchList.waitComplete() interrupted");
+                LOG.warn(this + " OperationBatchList.waitComplete() interrupted");
             }
         }
 
@@ -293,6 +330,9 @@ public class IndexRequestQueue implements InitializingBean {
         }
 
         public void onResponse(BulkResponse bulkResponse) {
+        	if (LOG.isDebugEnabled()){
+        		LOG.debug(this + " Received response. Has failures " + bulkResponse.hasFailures() + ". Completed in " + bulkResponse.getTookInMillis());
+        	}
             for (BulkItemResponse item : bulkResponse.items()) {
                 boolean removeFromQueue = !item.isFailed()
                         || item.getFailureMessage().indexOf("UnavailableShardsException") >= 0;
@@ -305,26 +345,30 @@ public class IndexRequestQueue implements InitializingBean {
                         continue;
                     }
                     IndexEntityKey key = new IndexEntityKey(item.getId(), entityClass);
+                    LOG.debug("Item with type " + item.getType() + " and id " + item.getId() + " will be removed from the queue");
                     toIndex.remove(key);
                     toDelete.remove(key);
+                }else{
+                	LOG.debug("Item with type " + item.getType() + " and id " + item.getId() + " will not be removed from the queue");
                 }
                 if (item.isFailed()) {
-                    LOG.error("Failed bulk item: " + item.getFailureMessage());
+                    LOG.error(this + " Failed bulk item: " + item.getFailureMessage());
                 }
             }
             if (!toIndex.isEmpty() || !toDelete.isEmpty()) {
+            	LOG.debug(this + " The queues are not empty so we will retry");
                 push();
             } else {
                 fireComplete();
                 if (LOG.isDebugEnabled()) {
-                    LOG.debug("Batch complete: " + bulkResponse.items().length + " actions.");
+                    LOG.debug(this + "Batch complete: " + bulkResponse.items().length + " actions.");
                 }
             }
         }
 
         public void onFailure(Throwable e) {
             // Everything failed. Re-push all.
-            LOG.error("Bulk request failure", e);
+            LOG.error("Bulk request failure. We will retry", e);
             push();
         }
 

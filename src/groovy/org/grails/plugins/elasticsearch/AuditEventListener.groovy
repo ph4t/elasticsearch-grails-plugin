@@ -15,41 +15,42 @@
  */
 package org.grails.plugins.elasticsearch
 
-import org.hibernate.event.PostCollectionUpdateEventListener
-import org.hibernate.event.PostCollectionUpdateEvent
-import org.hibernate.event.DeleteEvent
-import org.hibernate.event.FlushEventListener
-import org.hibernate.event.FlushEvent
-import org.hibernate.event.PostInsertEventListener
-import org.hibernate.event.PostInsertEvent
-import org.hibernate.event.PostUpdateEventListener
-import org.hibernate.event.PostUpdateEvent
-import org.hibernate.event.PostDeleteEventListener
-import org.hibernate.event.PostDeleteEvent
+import groovy.util.logging.Commons
+
 import org.codehaus.groovy.grails.orm.hibernate.events.SaveOrUpdateEventListener
-import org.springframework.context.ApplicationContextAware
-import org.springframework.context.ApplicationContext
 import org.grails.plugins.elasticsearch.index.IndexRequestQueue
-import org.springframework.transaction.support.TransactionSynchronizationManager
-import org.springframework.transaction.support.TransactionSynchronizationAdapter
-import org.apache.log4j.Logger
-import org.springframework.orm.hibernate3.HibernateTemplate
-import org.hibernate.SessionFactory
-import org.springframework.orm.hibernate3.HibernateCallback
 import org.hibernate.Session
+import org.hibernate.SessionFactory
+import org.hibernate.event.DeleteEvent
+import org.hibernate.event.FlushEvent
+import org.hibernate.event.FlushEventListener
+import org.hibernate.event.PostCollectionUpdateEvent
+import org.hibernate.event.PostCollectionUpdateEventListener
+import org.hibernate.event.PostDeleteEvent
+import org.hibernate.event.PostDeleteEventListener
+import org.hibernate.event.PostInsertEvent
+import org.hibernate.event.PostInsertEventListener
+import org.hibernate.event.PostUpdateEvent
+import org.hibernate.event.PostUpdateEventListener
+import org.springframework.context.ApplicationContext
+import org.springframework.context.ApplicationContextAware
+import org.springframework.orm.hibernate3.HibernateCallback
+import org.springframework.orm.hibernate3.HibernateTemplate
 import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationAdapter
+import org.springframework.transaction.support.TransactionSynchronizationManager
 
 /**
  * Listen to Hibernate events.
  */
+@Commons
 class AuditEventListener extends SaveOrUpdateEventListener implements PostCollectionUpdateEventListener,
                                                                       PostInsertEventListener, PostUpdateEventListener,
                                                                       PostDeleteEventListener,
                                                                       FlushEventListener,
                                                                       ApplicationContextAware
                                                                         {
-    /** Logger */
-    private static final Logger LOG = Logger.getLogger(AuditEventListener.class)
+    
 
     /** ES context */
     def elasticSearchContextHolder
@@ -91,12 +92,14 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
      * @param id assigned identifier (optional)
      */
     def pushToIndex(entityName, id, obj) {
+		log.debug "Indexing new entity $entityName with id $id"
         // Register transaction synchronization
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             // Save object as pending
             def objs = pendingObjects.get()
             if (!objs) {
                 objs = [:]
+				
                 pendingObjects.set(objs)
             }
 
@@ -104,17 +107,20 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
             if (deletedObjects.get()) {
                 deletedObjects.get().remove(key)
             }
+			log.debug "Object with id $id is added to the pending objects"
             objs[key] = obj
             registerMySynchronization()
 
         } else {
             // No transaction - Fire immediately.
+			log.debug "Object with id $id is added to the index request queue"
             indexRequestQueue.addIndexRequest(obj)
         }
 
     }
 
     def pushToDelete(entityName, id, obj) {
+		log.debug "Deleting entity $entityName with id $id"
         // Register transaction synchronization
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             // Add to list of deleted
@@ -128,11 +134,13 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
             if (pendingObjects.get()) {
                 pendingObjects.get().remove(key)
             }
+			log.debug "Object with id $id is added to the deleted objects"
             objs[key] = obj
             registerMySynchronization()
 
         } else {
             // No transaction - Fire immediately.
+			log.debug "Object with id $id is added to the index request queue"
             indexRequestQueue.addIndexRequest(obj)
         }
     }
@@ -141,6 +149,7 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
     void onPostUpdateCollection(PostCollectionUpdateEvent postCollectionUpdateEvent) {
         def clazz = postCollectionUpdateEvent.affectedOwnerOrNull?.class
         // Todo : optimize reindexing requests
+		log.debug "onPostUpdateCollection"
         if (elasticSearchContextHolder.isRootClass(clazz)) {
             pushToIndex(postCollectionUpdateEvent.affectedOwnerEntityName,
                     postCollectionUpdateEvent.affectedOwnerIdOrNull,
@@ -171,11 +180,13 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
 
     void onDelete(DeleteEvent deleteEvent, Set set) {
         // TODO : for cascade delete
+		log.debug "The delete event was fired but it's not implemented yet"
     }
 
     void onFlush(FlushEvent flushEvent) {
         // When a flush occurs, execute the pending requests in the buffer (the buffer is cleared automatically)
-        indexRequestQueue.executeRequests()
+		log.debug "Executing the flush"
+        indexRequestQueue.executeRequests(flushEvent.session)
     }
 
     void setApplicationContext(ApplicationContext applicationContext) {
@@ -230,6 +241,7 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
             def objsToDelete = deletedObjects.get()
             switch (status) {
                 case STATUS_COMMITTED:
+                    log.debug "Committing ${objsToIndex ? objsToIndex.size() : 0} objs."
                     if (objsToIndex && objsToDelete) {
                         objsToIndex.keySet().removeAll(objsToDelete.keySet())
                     }
@@ -239,6 +251,7 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
                     // (transactions are supposed to be managed
                     // by individual event listeners)
                     HibernateTemplate template = new HibernateTemplate(applicationContext.getBean('sessionFactory', SessionFactory.class))
+					log.debug "Created new hibernate session"
                     def indexRequestQueue = getIndexRequestQueue()
                     template.executeWithNewSession(new HibernateCallback() {
                         Object doInHibernate(Session session) {
@@ -257,14 +270,16 @@ class AuditEventListener extends SaveOrUpdateEventListener implements PostCollec
                     })
 
                     // flush to index.
+					log.debug "Executing the request queue"
                     indexRequestQueue.executeRequests()
+					
 
                     break
                 case STATUS_ROLLED_BACK:
-                    LOG.debug "Rollbacking ${objsToIndex ? objsToIndex.size() : 0} objs."
+                    log.debug "Rollbacking ${objsToIndex ? objsToIndex.size() : 0} objs."
                     break
                 default:
-                    LOG.error "Unknown transaction state."
+                    log.error "Unknown transaction state."
             }
 
             // Clear objs
