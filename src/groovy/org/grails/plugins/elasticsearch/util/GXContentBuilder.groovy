@@ -19,16 +19,18 @@
 
 package org.grails.plugins.elasticsearch.util
 
+import groovy.util.logging.Commons
+
 import org.elasticsearch.common.xcontent.XContentBuilder
 import org.elasticsearch.common.xcontent.XContentFactory
 import org.elasticsearch.common.xcontent.XContentType
-import org.codehaus.groovy.runtime.metaclass.MissingPropertyExceptionNoStack
 
 /**
  * This is a hacked version of EC's GXContentBuilder with patched property delegation.
  *
  * @author me
  */
+@Commons
 class GXContentBuilder extends GroovyObjectSupport {
 
     static NODE_ELEMENT = "element"
@@ -59,6 +61,7 @@ class GXContentBuilder extends GroovyObjectSupport {
     byte[] buildAsBytes(Closure c, XContentType contentType) {
         XContentBuilder builder = XContentFactory.contentBuilder(contentType);
         def json = build(c)
+		log.debug "Constructed query $json"
         builder.map(json);
         return builder.bytes().toBytes();
     }
